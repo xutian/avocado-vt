@@ -673,7 +673,18 @@ def preprocess(test, params, env):
     # Start tcpdump if it isn't already running
     # The fact it has to be started here is so that the test params
     # have to be honored.
-    env.start_tcpdump(params)
+    if params.get("remote_preprocess") == "yes":
+        remote_args = {
+            "remote_shell_client": "shell",
+            "remote_shell_port": "22",
+            "remote_shell_prompt": "#",
+            "remote_node_address": "",
+            "remote_node_user": "",
+            "remote_node_password": ""}
+        remote_args.update(params.copy_from_keys(remote_args.keys()))
+    else:
+        remote_args = {}
+    env.start_tcpdump(**remote_args)
 
     # Add migrate_vms to vms
     migrate_vms = params.objects("migrate_vms")

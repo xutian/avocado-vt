@@ -143,7 +143,6 @@ class Env(UserDict.IterableUserDict):
         empty = {"version": version}
         self._filename = filename
         self._tcpdump = None
-        self._params = None
         self.save_lock = threading.RLock()
         if filename:
             try:
@@ -314,28 +313,17 @@ class Env(UserDict.IterableUserDict):
         """
         return self.data.get("lvmdev__%s" % name)
 
-    def _start_tcpdump(self):
+    def _start_tcpdump(self, **remote_args):
 
         cmd_template = "%s -npvvvi any 'port 68 or port 546'"
-        if self._params.get("remote_preprocess") == "yes":
-            client = self._params.get('remote_shell_client', 'ssh')
-            port = self._params.get('remote_shell_port', '22')
-            prompt = self._params.get('remote_shell_prompt', '#')
-            address = self._params.get('remote_node_address')
-            username = self._params.get('remote_node_user')
-            password = self._params.get('remote_node_password')
-            rsession = None
-            try:
-                rsession = remote.remote_login(client, address,
-                                               port, username,
-                                               password, prompt)
-                tcpdump_bin = rsession.cmd_output("which tcpdump")
-                rsession.close()
-            except process.CmdError:
-                rsession.close()
-                raise exceptions.TestError("Can't find tcpdump binary!")
+        if remote_args:
+            client = remote_args.get('remote_shell_client', 'ssh')
+            port = remote_args.get('remote_shell_port', '22')
+            prompt = remote_args.get('remote_shell_prompt', '#')
+            address = remote_args.get('remote_node_address')
+            username = remote_args.get('remote_node_user')
+            password = remote_args.get('remote_node_password')
 
-            cmd = cmd_template % tcpdump_bin.strip()
             logging.debug("Run '%s' on host '%s'", cmd, address)
             login_cmd = ("ssh -o UserKnownHostsFile=/dev/null "
                          "-o StrictHostKeyChecking=no "
@@ -348,8 +336,12 @@ class Env(UserDict.IterableUserDict):
                 output_params=(self,))
 
             remote.handle_prompts(self._tcpdump, username, password, prompt)
+            status, tcpdump_bin = self._tcpdump.cmd_status_output("which tcpdump")
+            if status != 0:
+                raise exceptions.TestError("'tcpdump' binary not found in"
+                                           " host '%s'" % address)
+            cmd = cmd_template % tcpdump_bin.strip()
             self._tcpdump.sendline(cmd)
-
         else:
             cmd = cmd_template % utils_path.find_command("tcpdump")
             self._tcpdump = aexpect.Tail(command=cmd,
@@ -363,18 +355,16 @@ class Env(UserDict.IterableUserDict):
             msg = utils_misc.format_str_for_message(self._tcpdump.get_output())
             logging.warn("Output: %s", msg)
 
-    def start_tcpdump(self, params):
-        self._params = params
+    def start_tcpdump(self, **remote_args):
 
         if "address_cache" not in self.data:
             self.data["address_cache"] = {}
-
-        if self._tcpdump is None:
-            self._start_tcpdump()
-        else:
+        try:
             if not self._tcpdump.is_alive():
-                del self._tcpdump
-                self._start_tcpdump()
+                self._start_tcpdump(**remote_args)
+        except AttributeError:
+            self._start_tcpdump(**remote_args)
+        return self._tcpdump.is_alive()
 
     def stop_tcpdump(self):
         if self._tcpdump is not None:
