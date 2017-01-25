@@ -896,17 +896,10 @@ class VM(virt_vm.BaseVM):
 
             :param devices: VM devices container
             """
-            options = []
-            if params.get("maxmem"):
-                normalize_data_size = utils_misc.normalize_data_size
-                values = map(lambda x: "%sM" % params.get(x, 512), ["maxmem", "mem"])
-                values = map(lambda x: int(float(normalize_data_size(x))), values)
-                params["mem"] = min(values)
-            options.append("%s" % params.get("mem", 512))
+            options = [params.get("mem", 512)]
             if params.get("slots") and params.get("maxmem"):
                 options.append("slots=%s" % params["slots"])
                 options.append("maxmem=%s" % params["maxmem"])
-
             cmdline = "-m %s" % ",".join(options)
             dev = StrDev("mem", cmdline=cmdline)
             devices.insert(dev)
