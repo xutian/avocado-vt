@@ -1441,7 +1441,6 @@ class HumanMonitor(Monitor):
         return self.cmd(cmd)
 
 
-
 class QMPMonitor(Monitor):
     """
     Wraps QMP monitor commands.
@@ -2596,7 +2595,6 @@ class QMPMonitor(Monitor):
         self.cmd(command, arguments)
         return job_id
 
-
     def _operate_block_job(self, sub_cmd, identifier, **kwargs):
         """
         Block job operator
@@ -2614,7 +2612,6 @@ class QMPMonitor(Monitor):
             args = copy.copy(kwargs)
             args.update({"device": identifier})
         return self.cmd(sub_cmd, args)
-
 
     def qom_set(self, path, qproperty, qvalue):
         """
@@ -2877,12 +2874,14 @@ class QMPMonitor(Monitor):
         if self._has_command("x-block-dirty-bitmap-merge"):
             cmd = "x-block-dirty-bitmap-merge"
             if len(src_bitmaps) == 1:
-                args = {"node": node, "src_name": src_bitmaps[0], "dest_name": dst_bitmap}
+                args = {"node": node,
+                        "src_name": src_bitmaps[0], "dest_name": dst_bitmap}
                 return self.cmd(cmd, args)
             elif len(src_bitmaps) > 1:
                 actions = []
                 for src_bitmap in src_bitmaps:
-                    data = {"node": node, "src_name": src_bitmap, "dst_name": dst_bitmap}
+                    data = {"node": node, "src_name": src_bitmap,
+                            "dst_name": dst_bitmap}
                     actions.add({"type": cmd, "data": data})
                 return self.transaction(actions)
         elif self._has_command("block-dirty-bitmap-merge"):
