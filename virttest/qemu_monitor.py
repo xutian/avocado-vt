@@ -6,6 +6,7 @@ Interfaces to the QEMU monitor.
 
 from __future__ import division
 
+import copy
 import logging
 import os
 import re
@@ -1065,6 +1066,21 @@ class HumanMonitor(Monitor):
         cmd += " %s" % device
         return self.send_args_cmd(cmd)
 
+    def dismiss_block_job(self, identifier):
+        raise NotImplementedError
+
+    def blockdev_create(self, filename, driver="file", size=0, job_id=None, **options):
+        raise NotImplementedError
+
+    def blockdev_backup(self, device, target, sync, job_id=None, **kwargs):
+        raise NotImplementedError
+
+    def block_dirty_bitmap_merge(self, node, src_bitmaps, dst_bitmap):
+        raise NotImplementedError
+
+    def debug_bitmap_sha256(self, node, bitmap):
+        raise NotImplementedError
+
     def query_block_job(self, device):
         """
         Get block job status on the device
@@ -1423,6 +1439,7 @@ class HumanMonitor(Monitor):
         cmd = "system_powerdown"
         self.verify_supported_cmd(cmd)
         return self.cmd(cmd)
+
 
 
 class QMPMonitor(Monitor):
@@ -2188,10 +2205,8 @@ class QMPMonitor(Monitor):
         """
         if correct:
             cmd = self.correct(cmd)
-        self.verify_supported_cmd(cmd)
-        args = {"device": device,
-                "speed": speed}
-        return self.cmd(cmd, args)
+        kwargs = {"speed": speed}
+        return self._operate_block_job(cmd, device, **kwargs)
 
     def cancel_block_job(self, device, cmd="block-job-cancel", correct=True):
         """
@@ -2204,9 +2219,7 @@ class QMPMonitor(Monitor):
         """
         if correct:
             cmd = self.correct(cmd)
-        self.verify_supported_cmd(cmd)
-        args = {"device": device}
-        return self.cmd(cmd, args)
+        return self._operate_block_job(cmd, device)
 
     def pause_block_job(self, device, cmd="block-job-pause", correct=True):
         """
@@ -2219,9 +2232,7 @@ class QMPMonitor(Monitor):
         """
         if correct:
             cmd = self.correct(cmd)
-        self.verify_supported_cmd(cmd)
-        args = {"device": device}
-        return self.cmd(cmd, args)
+        return self._operate_block_job(cmd, device)
 
     def resume_block_job(self, device, cmd="block-job-resume", correct=True):
         """
@@ -2234,9 +2245,10 @@ class QMPMonitor(Monitor):
         """
         if correct:
             cmd = self.correct(cmd)
-        self.verify_supported_cmd(cmd)
-        args = {"device": device}
-        return self.cmd(cmd, args)
+        return self._operate_block_job(cmd, device)
+
+    def dismiss_block_job(self, identifier):
+        return self._operate_block_job("job-dismiss", identifier)
 
     def query_block_job(self, device):
         """
@@ -2508,6 +2520,39 @@ class QMPMonitor(Monitor):
             args["read-only-mode"] = mode
         return self.cmd(cmd, args)
 
+    def block_job_wrapper(cmd, auto_job_id=False):
+        """
+        Wrapper function for block job
+
+        :param cmd: QMP command
+        :param auto_job_id: bool, auto generate block job ID or not
+        """
+        def decorator(func):
+            def wrapper(*args, **kwargs):
+                args[0].verify_supported_cmd(cmd)
+                if auto_job_id and kwargs.get("job_id", None):
+                    kwargs["job_id"] = utils_misc.generate_random_id()
+                kwargs["command"] = cmd
+                return func(*args, **kwargs)
+            return wrapper
+        return decorator
+
+    @block_job_wrapper("blockdev-create", True)
+    def blockdev_create(self, **kwargs):
+        """
+        Create block device image file by qemu
+
+        :param kwargs: dictionary containing required parameters
+        :return: block job ID
+        :rtype: string
+        """
+        command = kwargs.pop("command")
+        job_id = kwargs.pop("job_id")
+        options = self._build_args(**kwargs)
+        arguments = {"options": options, "job-id": job_id}
+        self.cmd(command, arguments)
+        return job_id
+
     def blockdev_add(self, props):
         """
         Creates a new block device.
@@ -2535,6 +2580,41 @@ class QMPMonitor(Monitor):
         self.verify_supported_cmd(cmd)
         args = {"node-name": node_name}
         return self.cmd(cmd, args)
+
+    @block_job_wrapper("block-backup", True)
+    def blockdev_backup(self, **kwargs):
+        """
+        Backup block device via QMP command blockdev-backup
+
+        :param kwargs: dictionary containing required parameters
+        :return: block job ID
+        :rtype: string
+        """
+        job_id = kwargs.pop("job_id")
+        command = kwargs.pop("command")
+        arguments = self._build_args(**kwargs)
+        self.cmd(command, arguments)
+        return job_id
+
+
+    def _operate_block_job(self, sub_cmd, identifier, **kwargs):
+        """
+        Block job operator
+
+        :param string sub_cmd: supported sub-commands are: 'cancel', 'pause', 'resume',
+                               'set-speed', 'complete', 'dismiss', 'finalize'
+        :param string identifier: identifier for block job, it should be job ID or device ID
+        :param dict kwargs: dict of block job options
+        :return: nothing on successful
+        """
+        self.verify_supported_cmd(sub_cmd)
+        if sub_cmd in ["job-dismiss", "job-finalize"]:
+            args = {"id": identifier}
+        else:
+            args = copy.copy(kwargs)
+            args.update({"device": identifier})
+        return self.cmd(sub_cmd, args)
+
 
     def qom_set(self, path, qproperty, qvalue):
         """
@@ -2783,6 +2863,36 @@ class QMPMonitor(Monitor):
         """
         return self._operate_dirty_bitmap("clear", node, name)
 
+    def block_dirty_bitmap_merge(self, node, src_bitmaps, dst_bitmap):
+        """
+        Merge source bitmaps to target bitmap for given node
+
+        :param string node: block device node name
+        :parma list src_bitmaps: list of source bitmaps
+        :param string dst_bitmap: target bitmap name
+        :raise: MonitorNotSupportedCmdError if 'block-dirty-bitmap-mege' and
+                'x-block-dirty-bitmap-mege' commands not supported by QMP
+                monitor.  
+        """
+        if self._has_command("x-block-dirty-bitmap-merge"):
+            cmd = "x-block-dirty-bitmap-merge"
+            if len(src_bitmaps) == 1:
+                args = {"node": node, "src_name": src_bitmaps[0], "dest_name": dst_bitmap}
+                return self.cmd(cmd, args)
+            elif len(src_bitmaps) > 1:
+                actions = []
+                for src_bitmap in src_bitmaps:
+                    data = {"node": node, "src_name": src_bitmap, "dst_name": dst_bitmap}
+                    actions.add({"type": cmd, "data": data})
+                return self.transaction(actions)
+        elif self._has_command("block-dirty-bitmap-merge"):
+            cmd = "block-dirty-bitmap-merge"
+            args = {"node": node, "bitmaps": src_bitmaps, "target": dst_bitmap}
+            return self.cmd(cmd, args)
+        else:
+            raise MonitorNotSupportedCmdError(
+                self.name, "block-dirty-bitmap-merge/x-block-dirty-bitmap-merge")
+
     def block_dirty_bitmap_enable(self, node, name):
         """
         Enable a dirty bitmap.
@@ -2794,6 +2904,20 @@ class QMPMonitor(Monitor):
         Disable a dirty bitmap.
         """
         return self._operate_dirty_bitmap("disable", node, name)
+
+    def debug_bitmap_sha256(self, node, bitmap):
+        """
+        Get sha256 of bitmap
+
+        :param string node: node name
+        :param string bitmap: bitmap name
+        """
+        cmd = "debug-block-dirty-bitmap-sha256"
+        if not self._has_command(cmd):
+            cmd = "x-%s" % cmd
+        self.verify_supported_cmd(cmd)
+        args = {"node": node, "name": bitmap}
+        return self.cmd(cmd, args)
 
     def drive_backup(self, device, target, format, sync, speed=0,
                      mode='absolute-paths', bitmap=''):
