@@ -76,6 +76,7 @@ from virttest.staging import utils_koji
 from virttest.staging import service
 from virttest.xml_utils import XMLTreeFile
 from virttest.compat_52lts import results_stdout_52lts, results_stderr_52lts, decode_to_text
+#from virttest.qemu_monitor import MonitorNotSupportedCmdError
 
 import six
 from six.moves import xrange
@@ -4646,3 +4647,28 @@ def get_sosreport(path=None, session=None, remote_ip=None, remote_pwd=None,
         if session:
             session.close()
         return host_path
+
+
+def get_monitor_function(vm):
+    """
+    Get support function by function name
+    """
+    caller_name = inspect.stack()[1][3]
+    cmd = get_monitor_cmd(vm, caller_name.replace("_", "-"))
+    func_name = cmd.replace("-", "_")
+    return getattr(vm.monitor, func_name)
+
+
+def get_monitor_cmd(vm, cmd):
+    """
+    Wrapper to get monitor function
+    """
+    try:
+        vm.monitor.verify_supported_cmd(cmd)
+    except Exception as e:
+        logging.info(e.message)
+        cmd = "x-" + cmd
+        vm.monitor.verify_supported_cmd(cmd)
+    return cmd
+
+
