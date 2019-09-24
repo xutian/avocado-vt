@@ -1,8 +1,7 @@
 import re
+
 import infi.iscsiapi
-
 from avocado.utils import process
-
 
 software_initiator = infi.iscsiapi.get_iscsi_software_initiator()
 if not software_initiator.is_installed():
@@ -10,7 +9,6 @@ if not software_initiator.is_installed():
 
 
 class IscsiCli(object):
-
     API = infi.iscsiapi.get_iscsiapi()
     dev_root = '/dev/disk/by-path'
 

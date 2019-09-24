@@ -1,10 +1,9 @@
-import os
 import json
-
-from gluster import gfapi
+import os
 
 from avocado.utils import genio
 from avocado.utils import process
+from gluster import gfapi
 
 STORAGE_POOL_ROOT_DIR = '/tmp/avocado'
 
@@ -18,11 +17,15 @@ def make_pool_base_dir(protocol):
     return base_dir
 
 
-def get_volume_capacity(uri):
-    cmd = "qemu-img info {url} --output=json".format(url=uri)
+def get_volume_info(url):
+    cmd = "qemu-img info {url} --output=json".format(url=url)
     out = process.system_output(cmd, shell=True, ignore_status=False)
-    out_json = json.loads(out)
-    return out_json.get("virtual-size"), out_json.get("actual-size")
+    return json.loads(out)
+
+
+def get_volume_capacity(url):
+    info = get_volume_info(url)
+    return info.get("virtual-size"), info.get("actual-size")
 
 
 def wipe_volume(volume):

@@ -1,3 +1,4 @@
+import os
 
 
 class VolumeProtocol(object):
@@ -18,7 +19,8 @@ class VolumeProtocolFile(VolumeProtocol):
 
     def __init__(self, name, pool, params):
         super(VolumeProtocolFile, self).__init__(name, pool, params)
-        self.filename = params["image_filename"]
+        filename = params["image_filename"]
+        self.filename = os.path.realpath(filename)
 
 
 class VolumeProtocolGluster(VolumeProtocol):

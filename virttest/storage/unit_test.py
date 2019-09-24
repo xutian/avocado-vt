@@ -1,11 +1,8 @@
-import pprint
-
 from virttest import utils_params
-from virttest.storage.storage_pool import storage_pool_factory 
-from virttest.storage.storage_volume import storage_volume_factory
+from virttest.storage import factory
 
-sp_manager = storage_pool_factory.StoragePoolFactory()
-vol_manager = storage_volume_factory.StorageVolumeFactory() 
+sp_manager = factory.StoragePoolFactory()
+
 
 def build_storage_pool(sp_name, sp_params):
     sp_type = sp_params["storage_type"]
@@ -22,6 +19,7 @@ def build_stroage_pools(test_params):
             pool = build_storage_pool(sp_name, sp_params)
         pools.append(pool)
     return pools
+
 
 if __name__ == "__main__":
     params = utils_params.Params()
@@ -41,39 +39,40 @@ if __name__ == "__main__":
     params["nfs_dir_sp3"] = "/nfs"
     params["nfs_host_sp3"] = "127.0.0.1"
 
-    params["images"] = "img1 img2 img3 img4"
+    params["images"] = "img1 img2 img3 img4 img5 img6"
 
     params["storage_pool_img1"] = "sp1"
     params["storage_pool_img2"] = "sp2"
     params["storage_pool_img3"] = "sp3"
     params["storage_pool_img4"] = "sp1"
+    params["storage_pool_img5"] = "sp1"
+    params["storage_pool_img6"] = "sp1"
 
     params["image_format_img1"] = "qcow2"
     params["image_format_img2"] = "luks"
     params["image_format_img3"] = "raw"
-    params["image_format_imgt"] = "raw"
+    params["image_format_img4"] = "raw"
+    params["image_format_img5"] = "qcow2"
+    params["image_format_img6"] = "raw"
 
     params["image_filename_img1"] = "/tmp/a.qcow2"
     params["image_filename_img4"] = "/tmp/b.qcow2"
+    params["image_filename_img5"] = "/tmp/c.qcow2"
+    params["image_filename_img6"] = "/tmp/d.qcow2"
     params["nfs_image_name_img3"] = "img3_nfs"
 
-
     params["backing_img1"] = "img4"
+    params["backing_img4"] = "img5"
 
     pools = build_stroage_pools(params)
-    map(sp_manager.create_storage_pool, pools)
-    for name in params.objects("images"):
-        volume = vol_manager.factory(name, params)
-         
-    
-    img1 = sp_manager.get_volume_by_name("sp1", "img1")
-    assert img1.backing.name == "img4"
-    
-    pprint.pprint(vars(img1.protocol))
-    pprint.pprint(vars(img1.fmt))
-
+    sp1 = sp_manager.get_pool_by_name("sp1")
+    img1 = sp1.build_volume("img1")
+    assert img1.backing.name == "img4" 
+    assert img1.backing.backing.name == "img5"
+    sp2 = sp_manager.get_pool_by_name("sp2")
+    sp2.build_all_volumes()
     img2 = sp_manager.get_volume_by_name("sp2", "img2")
     assert img2.backing == None
-
-    img3 = sp_manager.get_volume_by_name("sp3", "img3")
-    img3.backing  == None
+    volumes = sp1.build_all_volumes()
+    img4 = sp_manager.get_volume_by_name("sp1", "img4")
+    assert img4.name == img1.backing.name

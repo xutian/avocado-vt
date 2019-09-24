@@ -1,6 +1,4 @@
-
 class Luks(object):
-    
     fmt = "luks"
 
     def __init__(self, name, params):
@@ -9,7 +7,6 @@ class Luks(object):
 
 
 class Qcow2(object):
- 
     fmt = "qcow2"
 
     def __init__(self, name, params):
@@ -30,7 +27,6 @@ class Qcow2(object):
 
 
 class Raw(object):
-
     fmt = "raw"
 
     def __init__(self, name, params):
