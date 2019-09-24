@@ -1,5 +1,5 @@
 from virttest import utils_params
-from virttest.storage import factory
+from virttest.virt_storage import factory
 
 sp_manager = factory.StoragePoolFactory()
 
@@ -67,12 +67,12 @@ if __name__ == "__main__":
     pools = build_stroage_pools(params)
     sp1 = sp_manager.get_pool_by_name("sp1")
     img1 = sp1.build_volume("img1")
-    assert img1.backing.name == "img4" 
+    assert img1.backing.name == "img4"
     assert img1.backing.backing.name == "img5"
     sp2 = sp_manager.get_pool_by_name("sp2")
     sp2.build_all_volumes()
     img2 = sp_manager.get_volume_by_name("sp2", "img2")
-    assert img2.backing == None
+    assert img2.backing is None
     volumes = sp1.build_all_volumes()
     img4 = sp_manager.get_volume_by_name("sp1", "img4")
     assert img4.name == img1.backing.name

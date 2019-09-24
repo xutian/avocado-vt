@@ -3,14 +3,11 @@ import os
 import rados
 from gluster import gfapi
 
-import copy
 from virttest import utils_disk
-from virttest.storage.storage_volume import exception
-from virttest.storage.storage_volume import storage_volume
-from virttest.storage.storage_volume import volume_format
-from virttest.storage.storage_volume import volume_protocol
-from virttest.storage.utils import iscsicli
-from virttest.storage.utils import utils_misc
+from virttest.virt_storage import exception
+from virttest.virt_storage import storage_volume
+from virttest.virt_storage.utils import iscsicli
+from virttest.virt_storage.utils import utils_misc
 
 
 class BasePool(object):
@@ -69,22 +66,27 @@ class BasePool(object):
                 sp = self
             vol = sp.get_volume_by_name(_volume_name)
             if vol is None:
-                vol = storage_volume.StorageVolume(_volume_name, sp, test_params)
-                vol.fmt = self.produce_format(_volume_name, volume_fmt, volume_params)
-                vol.protocol = self.produce_protocol(_volume_name, sp, volume_params)
+                vol = storage_volume.StorageVolume(
+                    _volume_name, sp, test_params)
+                vol.fmt = self.produce_format(
+                    _volume_name, volume_fmt, volume_params)
+                vol.protocol = self.produce_protocol(
+                    _volume_name, sp, volume_params)
             else:
                 if vol.fmt is None:
-                    vol.fmt = self.produce_format(_volume_name, volume_fmt, volume_params)
+                    vol.fmt = self.produce_format(
+                        _volume_name, volume_fmt, volume_params)
                 if vol.protocol is None:
-                    vol.protocol = self.produce_protocol(_volume_name, sp, volume_params)
+                    vol.protocol = self.produce_protocol(
+                        _volume_name, sp, volume_params)
             backing = volume_params.get("backing", None)
             if backing:
                 vol.backing = _build_volume(backing, test_params)
-            return vol    
+            return vol
 
         if params is None:
             params = self.params
-        #volume = next(_build_volume(volume_name, params))
+        # volume = next(_build_volume(volume_name, params))
         volume = _build_volume(volume_name, params)
         volume.pool.volumes[volume_name] = volume
         return volume
@@ -97,31 +99,43 @@ class BasePool(object):
             img_params = params.object_params(name)
             if img_params.get("storage_pool") == self.name:
                 vol = self.build_volume(name, params)
-                print("===============build all: %s" % vol.name )
                 volumes.append(vol)
         return volumes
 
     def produce_protocol(self, volume_name, pool, params=None):
         if params is None:
             params = self.params
-        protocol = pool.protocol
-        if protocol not in volume_protocol.SUPPORTED_VOLUME_PROTOCOL:
-            raise exception.UnsupportedVolumeProtocolException(protocol)
-
-        protocol_cls = volume_protocol.SUPPORTED_VOLUME_PROTOCOL[protocol]
-        protocol_params = params.object_params(volume_name)
-        return protocol_cls(volume_name, pool, protocol_params)
+        try:
+            protocol_cls = self.pool_mgr.SUPPORTED_VOLUME_PROTOCOL[pool.protocol]
+            protocol_params = params.object_params(volume_name)
+            return protocol_cls(volume_name, pool, protocol_params)
+        except KeyError:
+            raise exception.UnsupportedVolumeProtocolException(
+                self.pool_mgr, pool.protocol)
 
     def produce_format(self, volume_name, fmt, params=None):
         if params is None:
             params = self.params
-        if fmt not in volume_format.SUPPORTED_VOLUME_FORMAT.keys():
-            raise exception.UnsupportedVolumeFormatException(fmt)
-        fmt_cls = volume_format.SUPPORTED_VOLUME_FORMAT[fmt]
-        fmt_params = params.object_params(volume_name)
-        fmt_obj = fmt_cls(volume_name, fmt_params)
+        try:
+            fmt_cls = self.pool_mgr.SUPPORTED_VOLUME_FORMAT[fmt]
+            fmt_params = params.object_params(volume_name)
+            fmt_obj = fmt_cls(volume_name, fmt_params)
+            return fmt_obj
+        except KeyError:
+            raise exception.UnsupportedVolumeFormatException(
+                self.pool_mgr, fmt)
 
-        return fmt_obj
+    @staticmethod
+    def format_volume(self, vol):
+        vol_fmt = vol.fmt.type
+        if vol_fmt == "qcow2":
+            return utils_misc.format_volume_to_qcow2(vol)
+        elif vol_fmt == "luks":
+            return utils_misc.format_volume_to_luks(vol)
+        elif vol_fmt == "raw":
+            return utils_misc.format_volume_to_raw(vol)
+        raise exception.UnsupportedVolumeFormatException(
+            self.pool_mgr, vol_fmt)
 
 
 class FilePool(BasePool):
@@ -291,12 +305,3 @@ class RbdPool(FilePool):
 
     def delete_pool(self, pool_name):
         self._cluster.delete_pool(pool_name)
-
-
-SUPPORTED_STORAGE_POOLS = {
-    "file": FilePool,
-    "nfs": NfsPool,
-    "gluster": GlusterPool,
-    "rbd": RbdPool,
-    "iscsi": IscsiDriectPool
-}
